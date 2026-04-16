@@ -57,9 +57,8 @@ async def speak(text: str) -> None:
             None, _decode_mp3, tmp_path
         )
 
-        sd.play(audio, samplerate=sample_rate)
-        while sd.get_stream().active:
-            await asyncio.sleep(0.05)
+        await asyncio.get_running_loop().run_in_executor(
+            None, lambda: (sd.play(audio, samplerate=sample_rate), sd.wait())
+        )
     finally:
-        sd.stop()
         os.unlink(tmp_path)
