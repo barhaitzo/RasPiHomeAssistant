@@ -1,6 +1,7 @@
 # AC control
 msmart-ng              # Midea LAN protocol (Tadiran/Electra via MSmartHome)
-httpx                  # Sensibo REST calls (no extra lib needed, API is simple)
+httpx                  # kept for potential future use
+requests               # Sensibo REST calls (avoids asyncio SSL issues on Windows)
 
 # Speech
 faster-whisper
@@ -8,7 +9,6 @@ silero-vad
 sounddevice
 numpy
 edge-tts
-pygame
 
 # Config / utils
 pyyaml

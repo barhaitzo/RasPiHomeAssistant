@@ -8,6 +8,11 @@ Pipeline:
 import asyncio
 import os
 import sys
+
+# Ensure Hebrew text prints correctly on Windows terminals
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 import yaml
 from dotenv import load_dotenv
 
@@ -15,14 +20,12 @@ from controllers.midea import MideaController
 from controllers.sensibo import SensiboController
 from controllers.base import ACController, Mode, FanSpeed
 from parser.command_parser import Action, ParsedCommand, parse, load_config
-from voice.transcriber import Transcriber
-from voice.pipeline import VoicePipeline
 
 load_dotenv()
 
 # ── load config ───────────────────────────────────────────────────────────────
 
-with open("config.yaml") as f:
+with open("config.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 load_config(cfg["devices"], cfg["default_device"])
@@ -59,7 +62,10 @@ async def dispatch(command: ParsedCommand) -> str:
     ctrl = controllers.get(command.device_key)
     if ctrl is None:
         return f"המכשיר '{command.device_key}' לא נמצא"
+    return await _dispatch_inner(command, ctrl)
 
+
+async def _dispatch_inner(command: ParsedCommand, ctrl) -> str:
     match command.action:
         case Action.POWER_ON:
             await ctrl.turn_on()
@@ -104,7 +110,7 @@ async def main():
         print("pi_home_assistant מוכן — מצב stdin (בדיקות)\n")
         while True:
             try:
-                text = await asyncio.get_event_loop().run_in_executor(
+                text = await asyncio.get_running_loop().run_in_executor(
                     None, lambda: input("פקודה: ")
                 )
             except (EOFError, KeyboardInterrupt):
@@ -116,7 +122,10 @@ async def main():
             result = await dispatch(command)
             print(f"  → {result}\n")
     else:
-        # Full voice pipeline
+        # Full voice pipeline — import here so --stdin mode skips faster-whisper entirely
+        from voice.transcriber import Transcriber
+        from voice.pipeline import VoicePipeline
+
         voice_cfg = cfg.get("voice", {})
         model_name = voice_cfg.get("model", "openai/whisper-large-v3")
         vad_threshold = float(voice_cfg.get("vad_threshold", 0.02))

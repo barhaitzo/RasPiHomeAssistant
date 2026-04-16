@@ -3,25 +3,42 @@ Hebrew text-to-speech using edge-tts (Microsoft Neural TTS, free).
 
 Voice: he-IL-AvriNeural (male) — swap to he-IL-HilaNeural for female.
 Requires internet access.
+
+Playback uses av (already a faster-whisper dependency) to decode the MP3,
+then sounddevice to play it — no pygame needed.
 """
 
 import asyncio
 import os
 import tempfile
 
+import av
+import numpy as np
+import sounddevice as sd
 import edge_tts
-import pygame
 
 VOICE = "he-IL-AvriNeural"
 
-_mixer_initialized = False
 
+def _decode_mp3(path: str) -> tuple[np.ndarray, int]:
+    """Decode an mp3 file to a float32 numpy array and its sample rate."""
+    container = av.open(path)
+    stream = container.streams.audio[0]
+    sample_rate = stream.rate
 
-def _ensure_mixer():
-    global _mixer_initialized
-    if not _mixer_initialized:
-        pygame.mixer.init()
-        _mixer_initialized = True
+    frames = []
+    for packet in container.demux(stream):
+        for frame in packet.decode():
+            frame = frame.reformat(format="fltp")   # float32 planar
+            frames.append(frame.to_ndarray())        # (channels, samples)
+
+    container.close()
+
+    if not frames:
+        return np.zeros((1, 1), dtype=np.float32), sample_rate
+
+    audio = np.concatenate(frames, axis=1).T         # (total_samples, channels)
+    return audio.astype(np.float32), sample_rate
 
 
 async def speak(text: str) -> None:
@@ -29,17 +46,20 @@ async def speak(text: str) -> None:
     if not text:
         return
 
-    # generate to a temp mp3 file
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         tmp_path = f.name
 
     try:
         communicate = edge_tts.Communicate(text, voice=VOICE)
         await communicate.save(tmp_path)
-        _ensure_mixer()
-        pygame.mixer.music.load(tmp_path)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
+
+        audio, sample_rate = await asyncio.get_running_loop().run_in_executor(
+            None, _decode_mp3, tmp_path
+        )
+
+        sd.play(audio, samplerate=sample_rate)
+        while sd.get_stream().active:
             await asyncio.sleep(0.05)
     finally:
+        sd.stop()
         os.unlink(tmp_path)

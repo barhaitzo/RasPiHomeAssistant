@@ -1,5 +1,6 @@
+import asyncio
 import os
-import httpx
+import requests
 from .base import ACController, ACState, Mode, FanSpeed
 
 _BASE = "https://home.sensibo.com/api/v2"
@@ -29,49 +30,58 @@ _FAN_MAP_REV = {
 }
 
 
+def _get(path: str, api_key: str, **params) -> dict:
+    r = requests.get(
+        f"{_BASE}{path}",
+        params={"apiKey": api_key, **params},
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _post(path: str, api_key: str, payload: dict) -> dict:
+    r = requests.post(
+        f"{_BASE}{path}",
+        params={"apiKey": api_key},
+        json=payload,
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 class SensiboController(ACController):
     def __init__(self, pod_uid: str | None = None, pod_name: str | None = None):
-        """
-        Provide either pod_uid (faster) or pod_name to auto-discover.
-        Get pod UIDs from: GET https://home.sensibo.com/api/v2/users/me/pods
-        """
         self._api_key = os.environ["SENSIBO_API_KEY"]
         self._pod_uid = pod_uid
         self._pod_name = pod_name
 
-    def _params(self, **extra) -> dict:
-        return {"apiKey": self._api_key, **extra}
-
     async def _ensure_uid(self) -> str:
         if self._pod_uid is None:
-            async with httpx.AsyncClient() as client:
-                r = await client.get(
-                    f"{_BASE}/users/me/pods",
-                    params=self._params(fields="id,room"),
+            loop = asyncio.get_running_loop()
+            data = await loop.run_in_executor(
+                None, lambda: _get("/users/me/pods", self._api_key, fields="id,room")
+            )
+            pods = data["result"]
+            match = next(
+                (p for p in pods if p["room"]["name"] == self._pod_name), None
+            )
+            if match is None:
+                available = [p["room"]["name"] for p in pods]
+                raise ValueError(
+                    f"Pod '{self._pod_name}' not found. Available: {available}"
                 )
-                r.raise_for_status()
-                pods = r.json()["result"]
-                match = next(
-                    (p for p in pods if p["room"]["name"] == self._pod_name),
-                    None,
-                )
-                if match is None:
-                    available = [p["room"]["name"] for p in pods]
-                    raise ValueError(
-                        f"Pod '{self._pod_name}' not found. Available: {available}"
-                    )
-                self._pod_uid = match["id"]
+            self._pod_uid = match["id"]
         return self._pod_uid
 
     async def get_state(self) -> ACState:
         uid = await self._ensure_uid()
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{_BASE}/pods/{uid}/acStates",
-                params=self._params(limit=1, fields="acState"),
-            )
-            r.raise_for_status()
-        ac = r.json()["result"][0]["acState"]
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(
+            None, lambda: _get(f"/pods/{uid}/acStates", self._api_key, limit=1, fields="acState")
+        )
+        ac = data["result"][0]["acState"]
         return ACState(
             power=ac["on"],
             mode=_MODE_MAP.get(ac.get("mode", "cool"), Mode.COOL),
@@ -90,10 +100,7 @@ class SensiboController(ACController):
                 "temperatureUnit": "C",
             }
         }
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                f"{_BASE}/pods/{uid}/acStates",
-                params=self._params(),
-                json=payload,
-            )
-            r.raise_for_status()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, lambda: _post(f"/pods/{uid}/acStates", self._api_key, payload)
+        )
