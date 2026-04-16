@@ -4,6 +4,7 @@ Voice pipeline: mic → VAD → Whisper → wake word check → parser → dispa
 
 import asyncio
 import re
+from difflib import SequenceMatcher
 from typing import Callable, Awaitable
 
 from .vad import record_command
@@ -11,17 +12,46 @@ from .transcriber import Transcriber
 from .speaker import speak
 
 
+def _fuzzy_find(text: str, wake_word: str, threshold: float = 0.75) -> int | None:
+    """
+    Find wake_word (or a close phonetic match) in text.
+    Slides a word-level window and returns the end character position of the
+    best match, or None if nothing exceeds the threshold.
+    """
+    # Exact match first
+    m = re.search(re.escape(wake_word), text, re.IGNORECASE)
+    if m:
+        return m.end()
+
+    # Fuzzy: slide a window of the same word count over the transcription
+    ww_words = wake_word.split()
+    text_words = text.split()
+    n = len(ww_words)
+
+    best_ratio, best_end = 0.0, None
+    for i in range(max(1, len(text_words) - n + 1)):
+        window = " ".join(text_words[i : i + n])
+        ratio = SequenceMatcher(None, wake_word.lower(), window.lower()).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            # find end position of the last matched word in original text
+            last_word = text_words[i + n - 1]
+            pos = text.lower().rfind(last_word.lower(), 0, len(text))
+            best_end = pos + len(last_word) if pos != -1 else None
+
+    return best_end if best_ratio >= threshold else None
+
+
 def _strip_wake_word(text: str, wake_words: list[str]) -> str | None:
     """
-    Check all wake word variants. Return the command text after the first match,
-    or None if none of the wake words are present.
+    Check all wake word variants (with fuzzy matching).
+    Returns the command text after the best match, or None if no variant matched.
     """
     best: tuple[int, str] | None = None  # (match_end, remainder)
     for word in wake_words:
-        pattern = re.compile(re.escape(word), re.IGNORECASE)
-        match = pattern.search(text)
-        if match and (best is None or match.end() > best[0]):
-            best = (match.end(), text[match.end():].strip(" ,،.!"))
+        end = _fuzzy_find(text, word)
+        if end is not None and (best is None or end > best[0]):
+            best = (end, text[end:].strip(" ,،.!"))
     return best[1] if best is not None else None
 
 
