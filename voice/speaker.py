@@ -61,4 +61,7 @@ async def speak(text: str) -> None:
             None, lambda: (sd.play(audio, samplerate=sample_rate), sd.wait())
         )
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass  # Windows may hold the handle briefly; OS cleans temp files
