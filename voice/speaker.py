@@ -26,11 +26,14 @@ def _decode_mp3(path: str) -> tuple[np.ndarray, int]:
     stream = container.streams.audio[0]
     sample_rate = stream.rate
 
+    resampler = av.AudioResampler(format="fltp")
     frames = []
     for packet in container.demux(stream):
         for frame in packet.decode():
-            frame = frame.reformat(format="fltp")   # float32 planar
-            frames.append(frame.to_ndarray())        # (channels, samples)
+            for rf in resampler.resample(frame):
+                frames.append(rf.to_ndarray())       # (channels, samples)
+    for rf in resampler.resample(None):              # flush
+        frames.append(rf.to_ndarray())
 
     container.close()
 
