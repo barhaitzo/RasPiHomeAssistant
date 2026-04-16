@@ -34,10 +34,9 @@ def _fuzzy_find(text: str, wake_word: str, threshold: float = 0.75) -> int | Non
         ratio = SequenceMatcher(None, wake_word.lower(), window.lower()).ratio()
         if ratio > best_ratio:
             best_ratio = ratio
-            # find end position of the last matched word in original text
-            last_word = text_words[i + n - 1]
-            pos = text.lower().rfind(last_word.lower(), 0, len(text))
-            best_end = pos + len(last_word) if pos != -1 else None
+            # find position of this exact window in the original text
+            pos = text.lower().find(window.lower())
+            best_end = pos + len(window) if pos != -1 else None
 
     return best_end if best_ratio >= threshold else None
 
@@ -62,11 +61,13 @@ class VoicePipeline:
         dispatch: Callable[[str], Awaitable[str]],
         energy_threshold: float = 0.02,
         wake_words: list[str] | None = None,
+        silence_ms: int = 800,
     ):
         self._transcriber = transcriber
         self._dispatch = dispatch          # async fn: text → Hebrew confirmation
         self._energy_threshold = energy_threshold
         self._wake_words = wake_words or []
+        self._silence_ms = silence_ms
 
     async def run(self) -> None:
         """
@@ -80,7 +81,10 @@ class VoicePipeline:
 
         while True:
             try:
-                audio = await record_command(energy_threshold=self._energy_threshold)
+                audio = await record_command(
+                    energy_threshold=self._energy_threshold,
+                    silence_ms=self._silence_ms,
+                )
                 if audio is None:
                     continue
 

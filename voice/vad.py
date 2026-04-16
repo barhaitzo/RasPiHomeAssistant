@@ -22,6 +22,7 @@ MAX_DURATION_S = 10            # hard cap to avoid runaway recording
 async def record_command(
     energy_threshold: float = 0.02,
     sample_rate: int = SAMPLE_RATE,
+    silence_ms: int = 600,
 ) -> np.ndarray | None:
     """
     Block until a voice command is captured.
@@ -31,7 +32,9 @@ async def record_command(
 
     Tune `energy_threshold` if it triggers on background noise (raise it)
     or misses quiet speech (lower it). Typical range: 0.01 – 0.05.
+    Tune `silence_ms` to control how long a pause ends the recording.
     """
+    silence_chunks = max(1, int(silence_ms / (CHUNK_DURATION * 1000)))
     loop = asyncio.get_running_loop()
     audio_buffer: list[np.ndarray] = []
     pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_CHUNKS)
@@ -56,7 +59,7 @@ async def record_command(
             audio_buffer.append(chunk)
             if rms < energy_threshold:
                 silence_count += 1
-                if silence_count >= SILENCE_CHUNKS:
+                if silence_count >= silence_chunks:
                     loop.call_soon_threadsafe(done.set)
             else:
                 silence_count = 0

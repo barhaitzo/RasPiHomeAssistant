@@ -147,11 +147,13 @@ async def main():
             wake_words_cfg = [wake_words_cfg]
 
         transcriber = Transcriber(model_name=model_name)
+        silence_ms = int(voice_cfg.get("silence_duration_ms", 800))
         pipeline = VoicePipeline(
             transcriber=transcriber,
             dispatch=_voice_dispatch,
             energy_threshold=vad_threshold,
             wake_words=wake_words_cfg or None,
+            silence_ms=silence_ms,
         )
         await pipeline.run()
 
