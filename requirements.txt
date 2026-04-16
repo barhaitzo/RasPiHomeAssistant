@@ -1,0 +1,14 @@
+# AC control
+msmart-ng              # Midea LAN protocol (Tadiran/Electra via MSmartHome)
+httpx                  # Sensibo REST calls (no extra lib needed, API is simple)
+
+# Speech
+faster-whisper
+silero-vad
+sounddevice
+numpy
+
+# Config / utils
+pyyaml
+python-dotenv
+aiohttp

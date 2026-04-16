@@ -1,0 +1,28 @@
+devices:
+  living_room:
+    controller: midea
+    display_name: "סלון"
+    ip: "192.168.1.144"
+    port: 6444
+    device_id: 150633094414140
+    keywords_he: ["סלון", "הסלון"]
+
+  bedroom:
+    controller: sensibo
+    display_name: "חדר שינה"
+    pod_uid: "4FJoTnQo"
+    keywords_he: ["שינה", "חדר שינה", "חדר", "נבו", "אצל נבו", "החדר של נבו"]
+
+default_device: living_room
+
+voice:
+  model: ivrit-ai/whisper-large-v2-tuned   # switch to openai/whisper-large-v3 if accuracy suffers
+  language: he
+  vad_threshold: 0.5
+  sample_rate: 16000
+  silence_duration_ms: 800                 # how long to wait after speech stops before transcribing
+
+ac_defaults:
+  temperature: 24
+  mode: cool
+  fan_speed: auto
