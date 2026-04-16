@@ -11,16 +11,18 @@ from .transcriber import Transcriber
 from .speaker import speak
 
 
-def _strip_wake_word(text: str, wake_word: str) -> str | None:
+def _strip_wake_word(text: str, wake_words: list[str]) -> str | None:
     """
-    Return the command text after the wake word, or None if the wake word
-    isn't present. Matching is case-insensitive and ignores leading punctuation.
+    Check all wake word variants. Return the command text after the first match,
+    or None if none of the wake words are present.
     """
-    pattern = re.compile(re.escape(wake_word), re.IGNORECASE)
-    match = pattern.search(text)
-    if match is None:
-        return None
-    return text[match.end():].strip(" ,،.!")
+    best: tuple[int, str] | None = None  # (match_end, remainder)
+    for word in wake_words:
+        pattern = re.compile(re.escape(word), re.IGNORECASE)
+        match = pattern.search(text)
+        if match and (best is None or match.end() > best[0]):
+            best = (match.end(), text[match.end():].strip(" ,،.!"))
+    return best[1] if best is not None else None
 
 
 class VoicePipeline:
@@ -29,20 +31,20 @@ class VoicePipeline:
         transcriber: Transcriber,
         dispatch: Callable[[str], Awaitable[str]],
         energy_threshold: float = 0.02,
-        wake_word: str | None = None,
+        wake_words: list[str] | None = None,
     ):
         self._transcriber = transcriber
         self._dispatch = dispatch          # async fn: text → Hebrew confirmation
         self._energy_threshold = energy_threshold
-        self._wake_word = wake_word
+        self._wake_words = wake_words or []
 
     async def run(self) -> None:
         """
         Loop forever:
           listen → transcribe → (wake word check) → dispatch → speak confirmation
         """
-        if self._wake_word:
-            print(f'מאזין למילת ההפעלה "{self._wake_word}"... (Ctrl+C לעצירה)')
+        if self._wake_words:
+            print(f'מאזין למילות הפעלה {self._wake_words}... (Ctrl+C לעצירה)')
         else:
             print("מאזין... (Ctrl+C לעצירה)")
 
@@ -58,13 +60,12 @@ class VoicePipeline:
 
                 print(f"  שמעתי: {text}")
 
-                if self._wake_word:
-                    command_text = _strip_wake_word(text, self._wake_word)
+                if self._wake_words:
+                    command_text = _strip_wake_word(text, self._wake_words)
                     if command_text is None:
                         print("  (ללא מילת הפעלה — מתעלם)")
                         continue
                     if not command_text:
-                        # wake word said alone — acknowledge and wait for next utterance
                         await speak("כן?")
                         continue
                 else:

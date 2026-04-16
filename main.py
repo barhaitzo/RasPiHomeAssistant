@@ -19,7 +19,8 @@ from dotenv import load_dotenv
 from controllers.midea import MideaController
 from controllers.sensibo import SensiboController
 from controllers.base import ACController, Mode, FanSpeed
-from parser.command_parser import Action, ParsedCommand, parse, load_config
+from parser.command_parser import Action, ParsedCommand, load_config
+import parser.llm_parser as llm_parser
 
 load_dotenv()
 
@@ -29,6 +30,13 @@ with open("config.yaml", encoding="utf-8") as f:
     cfg = yaml.safe_load(f)
 
 load_config(cfg["devices"], cfg["default_device"])
+
+llm_cfg = cfg.get("llm_parser", {})
+llm_parser.load_config(
+    cfg["devices"],
+    cfg["default_device"],
+    model=llm_cfg.get("model", "qwen2.5:1.5b"),
+)
 
 # ── build controller registry ─────────────────────────────────────────────────
 
@@ -95,7 +103,9 @@ async def _dispatch_inner(command: ParsedCommand, ctrl) -> str:
 
 async def _voice_dispatch(text: str) -> str:
     """Parse raw transcribed text and dispatch to the right controller."""
-    command = parse(text)
+    command = await asyncio.get_running_loop().run_in_executor(
+        None, llm_parser.parse, text
+    )
     print(f"  parsed → {command}")
     return await dispatch(command)
 
@@ -117,7 +127,9 @@ async def main():
                 print("\nיוצא")
                 break
 
-            command = parse(text)
+            command = await asyncio.get_running_loop().run_in_executor(
+                None, llm_parser.parse, text
+            )
             print(f"  parsed → {command}")
             result = await dispatch(command)
             print(f"  → {result}\n")
@@ -130,13 +142,16 @@ async def main():
         model_name = voice_cfg.get("model", "openai/whisper-large-v3")
         vad_threshold = float(voice_cfg.get("vad_threshold", 0.02))
 
-        wake_word = voice_cfg.get("wake_word") or None
+        wake_words_cfg = voice_cfg.get("wake_word", [])
+        if isinstance(wake_words_cfg, str):
+            wake_words_cfg = [wake_words_cfg]
+
         transcriber = Transcriber(model_name=model_name)
         pipeline = VoicePipeline(
             transcriber=transcriber,
             dispatch=_voice_dispatch,
             energy_threshold=vad_threshold,
-            wake_word=wake_word,
+            wake_words=wake_words_cfg or None,
         )
         await pipeline.run()
 

@@ -21,7 +21,15 @@ voice:
   vad_threshold: 0.02          # RMS energy threshold (0.01–0.05 typical range)
   sample_rate: 16000
   silence_duration_ms: 800                 # how long to wait after speech stops before transcribing
-  wake_word: "אלקסה"            # say this before every command; remove line to disable
+  wake_word:                    # list of accepted variations; remove to disable
+    - "בקביק"
+    - "בקוויק"
+    - "היי בית"
+    - "הי בית"
+    - "באקביק"
+
+llm_parser:
+  model: qwen2.5:1.5b          # ollama model; swap to qwen2.5:3b for better accuracy
 
 ac_defaults:
   temperature: 24
