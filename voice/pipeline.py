@@ -71,7 +71,12 @@ class VoicePipeline:
                 else:
                     command_text = text
 
-                response = await self._dispatch(command_text)
+                # Fire acknowledgment and dispatch in parallel:
+                # "רגע" plays immediately while the AC call + TTS run behind it.
+                ack_task = asyncio.create_task(speak("רגע"))
+                dispatch_task = asyncio.create_task(self._dispatch(command_text))
+                await ack_task
+                response = await dispatch_task
                 print(f"  → {response}")
                 await speak(response)
 
