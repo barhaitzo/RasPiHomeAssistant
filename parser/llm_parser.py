@@ -54,6 +54,15 @@ def load_config(devices: dict, default_device: str, model: str = "qwen2.5:1.5b")
         devices="\n".join(lines),
         default_device=default_device,
     )
+    _check_ollama()
+
+
+def _check_ollama() -> None:
+    try:
+        r = requests.get("http://localhost:11434", timeout=2.0)
+        print(f"  [llm_parser] Ollama running — model: {_model}")
+    except Exception:
+        print(f"  [llm_parser] Ollama not found — falling back to keyword parser")
 
 
 def parse(text: str) -> ParsedCommand:
