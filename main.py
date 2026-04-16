@@ -2,11 +2,12 @@
 pi_home_assistant — main event loop
 
 Pipeline:
-  Microphone → VAD → Whisper (Hebrew) → CommandParser → ACController
+  Microphone → VAD → Whisper (Hebrew) → CommandParser → ACController → TTS
 """
 
 import asyncio
 import os
+import sys
 import yaml
 from dotenv import load_dotenv
 
@@ -14,6 +15,8 @@ from controllers.midea import MideaController
 from controllers.sensibo import SensiboController
 from controllers.base import ACController, Mode, FanSpeed
 from parser.command_parser import Action, ParsedCommand, parse, load_config
+from voice.transcriber import Transcriber
+from voice.pipeline import VoicePipeline
 
 load_dotenv()
 
@@ -82,26 +85,51 @@ async def dispatch(command: ParsedCommand) -> str:
             return "לא הבנתי את הפקודה"
 
 
+# ── voice dispatch wrapper ────────────────────────────────────────────────────
+
+async def _voice_dispatch(text: str) -> str:
+    """Parse raw transcribed text and dispatch to the right controller."""
+    command = parse(text)
+    print(f"  parsed → {command}")
+    return await dispatch(command)
+
+
 # ── main loop ─────────────────────────────────────────────────────────────────
 
 async def main():
-    print("pi_home_assistant מוכן — ממתין לפקודות קוליות")
-    print("(voice pipeline not yet connected — testing via stdin)\n")
+    stdin_mode = "--stdin" in sys.argv
 
-    # Temporary: read commands from stdin for testing before mic is wired up
-    while True:
-        try:
-            text = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: input("פקודה: ")
-            )
-        except (EOFError, KeyboardInterrupt):
-            print("\nיוצא")
-            break
+    if stdin_mode:
+        # Text-input testing mode (no mic / Whisper needed)
+        print("pi_home_assistant מוכן — מצב stdin (בדיקות)\n")
+        while True:
+            try:
+                text = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: input("פקודה: ")
+                )
+            except (EOFError, KeyboardInterrupt):
+                print("\nיוצא")
+                break
 
-        command = parse(text)
-        print(f"  parsed → {command}")
-        result = await dispatch(command)
-        print(f"  → {result}\n")
+            command = parse(text)
+            print(f"  parsed → {command}")
+            result = await dispatch(command)
+            print(f"  → {result}\n")
+    else:
+        # Full voice pipeline
+        voice_cfg = cfg.get("voice", {})
+        model_name = voice_cfg.get("model", "openai/whisper-large-v3")
+        vad_threshold = float(voice_cfg.get("vad_threshold", 0.02))
+
+        wake_word = voice_cfg.get("wake_word") or None
+        transcriber = Transcriber(model_name=model_name)
+        pipeline = VoicePipeline(
+            transcriber=transcriber,
+            dispatch=_voice_dispatch,
+            energy_threshold=vad_threshold,
+            wake_word=wake_word,
+        )
+        await pipeline.run()
 
 
 if __name__ == "__main__":

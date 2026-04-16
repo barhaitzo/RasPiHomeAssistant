@@ -7,6 +7,8 @@ faster-whisper
 silero-vad
 sounddevice
 numpy
+edge-tts
+pygame
 
 # Config / utils
 pyyaml

@@ -16,11 +16,12 @@ devices:
 default_device: living_room
 
 voice:
-  model: ivrit-ai/whisper-large-v2-tuned   # switch to openai/whisper-large-v3 if accuracy suffers
+  model: ivrit-ai/whisper-large-v3-turbo-ct2   # Hebrew-tuned, ct2 format, loads directly — fastest ivrit option
   language: he
-  vad_threshold: 0.5
+  vad_threshold: 0.02          # RMS energy threshold (0.01–0.05 typical range)
   sample_rate: 16000
   silence_duration_ms: 800                 # how long to wait after speech stops before transcribing
+  wake_word: "אלקסה"            # say this before every command; remove line to disable
 
 ac_defaults:
   temperature: 24
