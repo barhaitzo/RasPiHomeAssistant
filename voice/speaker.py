@@ -17,7 +17,7 @@ import numpy as np
 import sounddevice as sd
 import edge_tts
 
-VOICE = "he-IL-AvriNeural"
+VOICE = "he-IL-HilaNeural"  # female; swap to he-IL-AvriNeural for male
 
 
 def _decode_mp3(path: str) -> tuple[np.ndarray, int]:
